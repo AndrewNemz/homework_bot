@@ -10,19 +10,19 @@ class ErrorStatusCode(Exception):
     pass
 
 
-class ErrorNotTypeDict(Exception):
+class ErrorNotTypeDict(TypeError):
     """Вызывается, если ответ API отличен от словаря."""
 
     pass
 
 
-class ErrorKeyDict(Exception):
+class ErrorKeyDict(TypeError):
     """Вызывается, если в словаре есть несуществующий ключ."""
 
     pass
 
 
-class ErrorNotTypeList(Exception):
+class ErrorNotTypeList(TypeError):
     """Вызывается, если ответ API отличен от списка."""
 
     pass

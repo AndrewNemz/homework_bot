@@ -7,19 +7,17 @@ import telegram
 from http import HTTPStatus
 from exeptions_castom import ErrorResponseAPI
 from exeptions_castom import ErrorStatusCode
+from exeptions_castom import ErrorNotTypeDict
+from exeptions_castom import ErrorKeyDict
+from exeptions_castom import ErrorNotTypeList
 from dotenv import load_dotenv
 
 load_dotenv()
 
-if __name__ == '__main__':
-    logging.basicConfig(
-        level=logging.DEBUG,
-        filename='main.log',
-        format=(
-            '%(asctime)s, %(funcName)s, %(lineno)d,'
-            ' %(levelname)s, %(message)s'
-        )
-    )
+# когда пихаю хендлеры в if, то у меня падают тесты и пишет
+# что logger is not defined(
+# причем интересно, что сам бот запускается без ошибок
+# а тесты яндекса сообщают об ошибке)
 logger = logging.getLogger(__name__)
 logger.addHandler(
     logging.StreamHandler()
@@ -65,23 +63,21 @@ def get_api_answer(current_timestamp: int) -> dict:
         raise ErrorResponseAPI(f'Ошибка при запросе к основному API: {error}')
     if response.status_code != HTTPStatus.OK:
         status_code = response.status_code
-        logger.error(f'Ошибка {status_code}')
         raise ErrorStatusCode(f'Ошибка {status_code}')
     return response.json()
 
 
 def check_response(response: dict) -> dict:
     """Проверка корректности API-ответа."""
-    # Тесты не проходят, когда кастомные ошибки, но в exeptions указал
     if not isinstance(response, dict):
-        raise TypeError(
+        raise ErrorNotTypeDict(
             f'Ответ API отличен от словаря {type(response)}'
         )
     homework = response.get('homeworks')
     if homework is None:
-        raise TypeError(f'Ошибка по ключу {homework}')
+        raise ErrorKeyDict(f'Ошибка по ключу {homework}')
     if not isinstance(response['homeworks'], list):
-        raise TypeError(f'Тип данных не список {type(response)}')
+        raise ErrorNotTypeList(f'Тип данных не список {type(response)}')
     if isinstance(response, list):
         response = response[0]
         logging.info('API передал списко дз')
@@ -93,7 +89,7 @@ def parse_status(homework: dict) -> str:
     if 'homework_name' not in homework:
         raise KeyError('Отсутствует ключ "homework_name" в ответе API')
     if 'status' not in homework:
-        raise Exception('Отсутствует ключ "status" в ответе API')
+        raise KeyError('Отсутствует ключ "status" в ответе API')
     homework_name = homework['homework_name']
     homework_status = homework['status']
     if homework_status not in HOMEWORK_VERDICTS:
@@ -104,9 +100,7 @@ def parse_status(homework: dict) -> str:
 
 def check_tokens():
     """Проверка доступности переменных окружения."""
-    # тут тесты требуют True возращать, return просто нельзя написать
-    if all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]):
-        return True
+    return all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
 
 
 def main():
@@ -114,6 +108,7 @@ def main():
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
     last_error = ''
+    status = ''
     if not check_tokens():
         logger.critical('Отсутствуют одна или несколько переменных окружения')
         sys.exit()
@@ -121,10 +116,13 @@ def main():
         try:
             response = get_api_answer(current_timestamp)
             homeworks = check_response(response)
-            if len(homeworks) > 0:
+            if homeworks:
                 current_homework = homeworks[0]
                 hw_status = parse_status(current_homework)
-                send_message(bot, f'{hw_status}')
+                message = send_message(bot, f'{hw_status}')
+                if message != status:
+                    send_message(bot, f'{hw_status}')
+                    status = message
             else:
                 logger.debug('Нет новых статусов')
             current_timestamp = response.get("current_date")
@@ -135,8 +133,21 @@ def main():
                 send_message(bot, message)
                 last_error = error
             logger.error(message)
-        time.sleep(RETRY_PERIOD)
+        finally:
+            time.sleep(RETRY_PERIOD)
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.DEBUG,
+        filename='main.log',
+        format=(
+            '%(asctime)s, %(funcName)s, %(lineno)d,'
+            ' %(levelname)s, %(message)s'
+        )
+    )
+    '''logger = logging.getLogger(__name__)
+    logger.addHandler(
+    logging.StreamHandler()
+    )'''
     main()
